@@ -58,8 +58,15 @@ def train_torch(model, args, train_ds, feature_engineering):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
+   # optimizer = optim.Adam(
+   #     model.parameters(),
+   #     lr=config.learning_rate,
+   #     betas=(config.beta_1, config.beta_2),
+   #     eps=config.epsilon,
+   #     amsgrad=config.amsgrad
+   # )
     optimizer = optim.Adam(
-        model.parameters(),
+        filter(lambda p: p.requires_grad, model.parameters()),
         lr=config.learning_rate,
         betas=(config.beta_1, config.beta_2),
         eps=config.epsilon,
@@ -223,6 +230,14 @@ def create_model_with_distribution_strategy(architecture, backend, extend_model,
     """Creates models depending on the GPU count and on extend_model"""
     print('Creating model...')
 
+    #   Helper function for .pth files / PyTorch loading
+    def torch_load_pre_train(model_path):
+        """Skip .pth files for Keras loading; let create_model() handle PyTorch loading"""
+        if model_path is None or not isinstance(model_path, str):
+            return model_path
+        # Return path as-is if .pth; Keras only for .h5
+        return model_path if not model_path.endswith(".h5") else model_path
+
     strategy = None
     gpu_count = (len(tf.config.list_physical_devices('GPU')) +
         len(tf.config.list_physical_devices('XLA_GPU')))
@@ -232,7 +247,11 @@ def create_model_with_distribution_strategy(architecture, backend, extend_model,
         print(f"Number of mirrored devices: {strategy.num_replicas_in_sync}.")
         with strategy.scope():
             if extend_model is not None:
-                extend_model = tf.keras.models.load_model(extend_model, compile=False)
+                # Use torch_load_pre_train to handle .pth files appropriately
+                extend_model = torch_load_pre_train(extend_model)
+                # Only load with Keras if it's an .h5 file
+                if extend_model is not None and isinstance(extend_model, str) and extend_model.endswith(".h5"):
+                    extend_model = tf.keras.models.load_model(extend_model, compile=False)
             model = create_model(architecture, extend_model, output_layer_size, max_train_len)
         if architecture in ("FFNN", "CNN", "LSTM", "Transformer") and extend_model is None:
             print_model_summary(architecture, model, backend, max_train_len)
@@ -241,7 +260,11 @@ def create_model_with_distribution_strategy(architecture, backend, extend_model,
         print("Only one GPU found.")
         strategy = NullDistributionStrategy()
         if extend_model is not None:
-            extend_model = tf.keras.models.load_model(extend_model, compile=False)
+            # Use torch_load_pre_train for .pth files 
+            extend_model = torch_load_pre_train(extend_model)
+            # Only load with Keras if it's .h5 file
+            if extend_model is not None and isinstance(extend_model, str) and extend_model.endswith(".h5"):
+                extend_model = tf.keras.models.load_model(extend_model, compile=False)
         model = create_model(architecture, extend_model, output_layer_size, max_train_len)
         if architecture in ("FFNN", "CNN", "LSTM", "Transformer") and extend_model is None:
             print_model_summary(architecture, model, backend, max_train_len)
@@ -277,8 +300,40 @@ def create_model(architecture, extend_model, output_layer_size, max_train_len):
     input_layer_size = 724 
     hidden_layer_size = int(2 * (input_layer_size / 3) + output_layer_size)
 
-    # Create a model based on an existing one for further trainings
-    if extend_model is not None:
+  # Transfer Learning functionality
+  # Rebuilds model  with updated last layer and transfered mactching weights
+    if extend_model is not None and isinstance(extend_model, str) and extend_model.endswith(".pth"):
+        ckpt = torch.load(extend_model, map_location="cpu")
+        ckpt_state = ckpt['model_state_dict']
+
+        if architecture == "FFNN":
+            model = FFNN(input_size=ckpt['input_size'],
+                         hidden_size=ckpt['hidden_size'],
+                         output_size=output_layer_size,
+                         num_hidden_layers=ckpt.get('num_hidden_layers', 1))
+        else:  # LSTM
+            model = LSTM(vocab_size=ckpt['vocab_size'],
+                         embed_dim=ckpt['embed_dim'],
+                         hidden_size=ckpt['hidden_size'],
+                         output_size=output_layer_size,
+                         num_layers=ckpt.get('num_layers', 1),
+                         dropout=ckpt.get('dropout', 0.0))
+  
+  # copy identical weights, skip mismached layers
+        model_state = model.state_dict()
+        copied_keys = set()
+        for k, v in ckpt_state.items():
+            if k in model_state and model_state[k].shape == v.shape:
+                model_state[k] = v
+                copied_keys.add(k)
+        model.load_state_dict(model_state)
+        # small metadata so the main() can inspect which keys were copied
+        model._copied_state_keys = copied_keys
+        model._loaded_from_checkpoint = extend_model
+        return model
+
+ # Create a model based on an existing one for further trainings
+    if extend_model is not None and not isinstance(extend_model, str):
         # remove the last layer
         model = tf.keras.Sequential()
         for layer in extend_model.layers[:-1]:
@@ -287,7 +342,7 @@ def create_model(architecture, extend_model, output_layer_size, max_train_len):
         model.compile(optimizer=optimizer, loss="sparse_categorical_crossentropy",
                        metrics=["accuracy", SparseTopKCategoricalAccuracy(k=3, name="k3_accuracy")])
         return model
-    
+
     # Create new model based on architecture
     if architecture == "FFNN":
         # Use PyTorch for FFNN
@@ -496,6 +551,8 @@ def parse_arguments():
                              )
     parser.add_argument('--extend_model', default=None, type=str,
                         help='Load a trained model from a file and use it as basis for the new training.')
+    parser.add_argument('--freeze_base', action='store_true',
+                        help='Freeze base layers from  PyTorch checkpoint.')
 
     return parser.parse_args()
     
@@ -1273,13 +1330,21 @@ def main():
 
 
     if extend_model is not None:
-        if architecture not in ('CNN'):
-            print('ERROR: Models with the architecture %s can not be extended!' % architecture,
-                  file=sys.stderr)
-            sys.exit(1)
-        if len(os.path.splitext(extend_model)) != 2 or os.path.splitext(extend_model)[1] != '.h5':
-            print('ERROR: The extended model name must have the ".h5" extension!', file=sys.stderr)
-            sys.exit(1)
+        ext = os.path.splitext(extend_model)[1]
+        if backend == Backend.KERAS:
+            if architecture not in ('CNN'):
+                print('ERROR: Models with the architecture %s can not be extended!' % architecture, file=sys.stderr)
+                sys.exit(1)
+            if ext != '.h5':
+                print('ERROR: The extended model name must have the ".h5" extension!', file=sys.stderr)
+                sys.exit(1)
+        elif backend == Backend.PYTORCH:
+            if architecture not in ('FFNN', 'LSTM'):
+                print('ERROR: Only FFNN and LSTM PyTorch models can be extended!', file=sys.stderr)
+                sys.exit(1)
+            if ext != '.pth':
+                print('ERROR: The extended model name must have the ".pth" extension!', file=sys.stderr)
+                sys.exit(1)
 
     if architecture == "SVM-Rotor" and cipher_types[0] != "rotor":
         print(f"When training rotor-only model, the argument `ciphers` "
@@ -1315,7 +1380,15 @@ def main():
     model, strategy = create_model_with_distribution_strategy(
     architecture, backend, extend_model, output_layer_size=output_layer_size, max_train_len=args.max_train_len)
 
-    
+    #  freeze all parameters that were copied  (leave final layer trainable)
+    if backend == Backend.PYTORCH and args.freeze_base and extend_model is not None:
+        ckpt = torch.load(extend_model, map_location='cpu') # map location cpu?
+        ckpt_state = ckpt['model_state_dict']
+        model_state = model.state_dict()
+        matched = set(k for k, v in ckpt_state.items() if k in model_state and model_state[k].shape == v.shape)
+        for name, param in model.named_parameters():
+            param.requires_grad = name not in matched
+
     if backend == Backend.KERAS:
         early_stopping_callback, train_iter, training_stats = train_model(model, strategy, 
                                                                       args, train_ds)

@@ -56,25 +56,28 @@ from cipherImplementations.triSquare import TriSquare
 from cipherImplementations.twoSquare import TwoSquare
 from cipherImplementations.variant import Variant
 from cipherImplementations.vigenere import Vigenere
+from cipherImplementations.BigramSubstitution import BigramSubstitution
 
 
 ROTOR_CIPHER_TYPES = ['enigma', 'm209', 'purple', 'sigaba', 'typex']
 # CIPHER_TYPES = ['columnar_transposition', 'hill', 'playfair', 'simple_substitution', 'vigenere']
-CIPHER_TYPES = ['amsco', 'autokey', 'baconian', 'bazeries', 'beaufort', 'bifid', 'cadenus', 'checkerboard', 'columnar_transposition',
+CIPHER_TYPES = ['simple_substitution', 
+                'amsco', 'autokey', 'baconian', 'bazeries', 'beaufort', 'bifid', 'cadenus', 'checkerboard', 'columnar_transposition',
                 'condi', 'cmbifid', 'digrafid', 'foursquare', 'fractionated_morse', 'grandpre', 'grille', 'gromark', 'gronsfeld',
                 'headlines', 'homophonic', 'key_phrase',  # , 'incomplete_columnar_transposition'
                 'monome_dinome', 'morbit', 'myszkowski', 'nicodemus', 'nihilist_substitution', 'nihilist_transposition', 'null',
                 'numbered_key', 'periodic_gromark', 'phillips', 'phillips_rc', 'plaintext', 'playfair', 'pollux', 'porta', 'portax',
                 'progressive_key', 'quagmire1', 'quagmire2', 'quagmire3', 'quagmire4', 'ragbaby', 'railfence', 'redefence',
                 'route_transposition', 'running_key', 'seriated_playfair', 'slidefair', 'swagman', 'tridigital', 'trifid', 'tri_square',
-                'two_square', 'variant', 'vigenere', 'enigma', 'm209', 'purple', 'sigaba', 'typex']
+                'two_square', 'variant', 'vigenere', 'enigma', 'm209', 'purple', 'sigaba', 'typex', 'bigram_substitution']
 
 # CIPHER_IMPLEMENTATIONS = [ColumnarTransposition(INPUT_ALPHABET, UNKNOWN_SYMBOL, UNKNOWN_SYMBOL_NUMBER, fill_blocks=False),
 #                           Hill(INPUT_ALPHABET, b'x', ord('x')),
 #                           Playfair(INPUT_ALPHABET.replace(b'j', b''), b'x', ord('x')),
 #                           SimpleSubstitution(INPUT_ALPHABET, UNKNOWN_SYMBOL, UNKNOWN_SYMBOL_NUMBER),
 #                           Vigenere(INPUT_ALPHABET, UNKNOWN_SYMBOL, UNKNOWN_SYMBOL_NUMBER)]
-CIPHER_IMPLEMENTATIONS = [Amsco(INPUT_ALPHABET, UNKNOWN_SYMBOL, UNKNOWN_SYMBOL_NUMBER),
+CIPHER_IMPLEMENTATIONS = [SimpleSubstitution(INPUT_ALPHABET, UNKNOWN_SYMBOL, UNKNOWN_SYMBOL_NUMBER),
+                          Amsco(INPUT_ALPHABET, UNKNOWN_SYMBOL, UNKNOWN_SYMBOL_NUMBER),
                           Autokey(INPUT_ALPHABET, UNKNOWN_SYMBOL, UNKNOWN_SYMBOL_NUMBER),
                           Baconian(INPUT_ALPHABET, UNKNOWN_SYMBOL, UNKNOWN_SYMBOL_NUMBER),
                           Bazeries(INPUT_ALPHABET.replace(b'j', b''), UNKNOWN_SYMBOL, UNKNOWN_SYMBOL_NUMBER),
@@ -131,18 +134,19 @@ CIPHER_IMPLEMENTATIONS = [Amsco(INPUT_ALPHABET, UNKNOWN_SYMBOL, UNKNOWN_SYMBOL_N
                           TriSquare(INPUT_ALPHABET.replace(b'j', b''), UNKNOWN_SYMBOL, UNKNOWN_SYMBOL_NUMBER),
                           TwoSquare(INPUT_ALPHABET.replace(b'j', b''), UNKNOWN_SYMBOL, UNKNOWN_SYMBOL_NUMBER),
                           Variant(INPUT_ALPHABET, UNKNOWN_SYMBOL, UNKNOWN_SYMBOL_NUMBER),
-                          Vigenere(INPUT_ALPHABET, UNKNOWN_SYMBOL, UNKNOWN_SYMBOL_NUMBER)]
+                          Vigenere(INPUT_ALPHABET, UNKNOWN_SYMBOL, UNKNOWN_SYMBOL_NUMBER),
+                          BigramSubstitution(INPUT_ALPHABET, UNKNOWN_SYMBOL, UNKNOWN_SYMBOL_NUMBER),]
 
 # KEY_LENGTHS = [13, None, 13, None, 13]
 # KEY_LENGTHS = [list(range(4, 17)), [None]*13, list(range(4, 17)), [None]*13, list(range(4, 17))]
 # KEY_LENGTHS = [[5,10,20,25], [None]*4, [6,7,8,9], [None]*4, [5,10,20,25]]
 # KEY_LENGTHS = [[None]*4, [5,10,20,25]]
-KEY_LENGTHS = [[5,6,7,8], [5,6,7,8], [None]*4, [None]*4, [5,6,7,8], [5,6,7,8], [4,4,5,6], [5,10,15,20], [5,6,7,8], [5,6,7,8], [5,6,7,8],
+KEY_LENGTHS = [ [26, 26, 26, 26], [5,6,7,8], [5,6,7,8], [None]*4, [None]*4, [5,6,7,8], [5,6,7,8], [4,4,5,6], [5,10,15,20], [5,6,7,8], [5,6,7,8], [5,6,7,8],
                [5,6,7,8], [5,6,7,8], [5,6,7,8], [None]*4, [2,5,10,5], [5,6,7,8], [5,6,7,8], [5,6,7,8], [None]*4, [None]*4, [None]*4,
                [None]*4, [5,6,7,8], [5,6,7,8], [5,6,7,8], [10,10,10,10], [None]*4, [5,6,7,8], [5,6,7,8], [5,6,7,8], [5,6,7,8], [None]*4,
                [5,6,7,8], [None]*4, [5,6,7,8], [5,6,7,8], [5,6,7,8], [5,6,7,8], [5,6,7,8], [5,6,7,8], [5,6,7,8], [5,6,7,8], [5,6,7,8],
                [5,6,7,8], [4,4,5,10], [None]*4, [5,6,7,8], [5,6,7,8], [5,6,7,8], [5,6,7,8], [5,6,7,8], [5,6,7,8], [5,6,7,8], [5,6,7,8],
-               [5,6,7,8], [None]*4, [None]*4, [None]*4, [None]*4, [None]*4]
+               [5,6,7,8], [None]*4, [None]*4, [None]*4, [None]*4, [None]*4, [676, 676, 676, 676]]
 MTC3 = 'mtc3'
 ACA = 'aca'
 ROTOR = 'rotor'
